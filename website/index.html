@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!--
+Copyright 2017-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Licensed under the Amazon Software License (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
+    http://aws.amazon.com/asl/
+or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. 
+See the License for the specific language governing permissions and limitations under the License. 
+-->
+
+<html>
+    <script src="configs.js"></script>
+    <script type="text/javascript" src="lib/axios/dist/axios.standalone.js" defer></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/hmac-sha256.js" defer></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/sha256.js" defer></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/hmac.js" defer></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/enc-base64.js" defer></script>
+    <script type="text/javascript" src="lib/url-template/url-template.js" defer></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/sigV4Client.js" defer></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/apiGatewayClient.js" defer></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/simpleHttpClient.js" defer></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/utils.js" defer></script>
+    <script type="text/javascript" src="apigClient.js" defer></script>
+<head>
+<title>Cognito SAML Example</title>
+<script src="aws-sdk.min.js"></script>
+<script type="text/javascript">
+
+const identityPool = configs.identityPool;
+AWS.config.region = configs.region; // Region
+
+AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+    IdentityPoolId: identityPool
+});
+var cognitoidentity = new AWS.CognitoIdentity();
+var identityId = localStorage.getItem('cognitoid');
+
+loginWorkflow();
+
+//Used for grabbing JWT from SAML parsing redirect
+function getParameterByName(name, url) {
+    if (!url) {
+      url = window.location.href;
+    }
+    name = name.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+function loginWorkflow(){
+    var activelogin = sessionStorage.getItem('activelogin');
+    if (activelogin=='inProgress'){                                   //ADFS login redirect from API Gateway
+        var samlResponse = getParameterByName('SAMLResponse');
+        sessionStorage.removeItem('activelogin');
+    } 
+    else if (activelogin === null) {                                 //First page visit. Redirect to ADFS login.
+        var RPID = encodeURIComponent(configs.relayingPartyId);
+        var result = configs.adfsUrl + "?loginToRp=" + RPID;
+        sessionStorage.setItem('activelogin', 'inProgress');
+        window.location = result;
+    }   
+    else {//Credentials exist, page refresh, etc.
+        console.log('activelogin already exists in session and the value is ' + activelogin);
+    }
+}
+
+
+function pingApiGateway(){
+	var tmpkey = getParameterByName('key');
+	var tmpsec = getParameterByName('sec');
+	var tmptoken = getParameterByName('token');
+    var apigwClient = apigClientFactory.newClient({
+        accessKey: tmpkey,
+        secretKey: tmpsec,
+        sessionToken: tmptoken,
+        region: AWS.config.region
+    });
+
+    var params = {};
+    var body = {};
+    var additionalParams = {};
+
+    apigwClient.usersGet(params, body, additionalParams)
+        .then(function (result) {
+            console.log(result);
+            alert('Successful ping: ' + result.data.status + ' - ' + result.data.agent);
+        }).catch(function (result) {
+            alert('Failed ping');
+            console.log(result);
+        });
+}
+
+</script>
+
+</head>
+
+<body>
+
+<h1>Testing SAMLResponse</h1>
+
+<p>After login redirect takes place click the button below to ping API Gateway and test if your credentials have access to the Mock resource</p>
+<button onclick="pingApiGateway()">PING</button>
+</body>
+</html>
